@@ -1,0 +1,933 @@
+<title>Ritmo ECG</title>
+<style>
+  /* Layout: app de tela única — home com modos, tela de jogo com papel de ECG + 4 respostas, tela de resultado. Papel de ECG mantém a estética física (grade salmão) nos dois temas; o chrome adapta. */
+  :root{
+    --bg:#eef1f5; --surface:#ffffff; --surface-2:#f2f5f9; --surface-3:#e7ecf2;
+    --fg:#111820; --muted:#5c6b7a; --faint:#8a97a5; --line:#dbe2ea;
+    --accent:#0f9d76; --accent-2:#0b7d5e; --accent-fg:#ffffff; --accent-soft:#dcf3ea;
+    --danger:#e0424a; --danger-soft:#fde4e5; --warn:#e0891b; --gold:#d99a12;
+    --ok:#0f9d76;
+    /* papel de ECG — físico, fixo nos dois temas */
+    --paper:#fff8f6; --grid-min:#f4cdc6; --grid-maj:#e29a90; --trace:#181212; --paper-fg:#7a4a44;
+    --sh:0 1px 2px rgba(16,26,40,.06),0 8px 24px rgba(16,26,40,.08);
+    --sh-lg:0 4px 12px rgba(16,26,40,.10),0 24px 60px rgba(16,26,40,.16);
+    --r-lg:26px; --r-md:18px; --r-sm:12px;
+    --f-disp:'Bricolage Grotesque',system-ui,sans-serif;
+    --f-body:'Manrope',system-ui,sans-serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0b0f14; --surface:#141b22; --surface-2:#1a222b; --surface-3:#212b35;
+    --fg:#e9eef3; --muted:#9aa8b6; --faint:#6b7885; --line:#28323d;
+    --accent:#2bd4a3; --accent-2:#22b98d; --accent-fg:#052018; --accent-soft:#123028;
+    --danger:#ff6b71; --danger-soft:#37191b; --warn:#f0a83c; --gold:#e6b53a; --ok:#2bd4a3;
+    --sh:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.4);
+    --sh-lg:0 6px 18px rgba(0,0,0,.4),0 30px 70px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0b0f14; --surface:#141b22; --surface-2:#1a222b; --surface-3:#212b35;
+    --fg:#e9eef3; --muted:#9aa8b6; --faint:#6b7885; --line:#28323d;
+    --accent:#2bd4a3; --accent-2:#22b98d; --accent-fg:#052018; --accent-soft:#123028;
+    --danger:#ff6b71; --danger-soft:#37191b; --warn:#f0a83c; --gold:#e6b53a; --ok:#2bd4a3;
+    --sh:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.4);
+    --sh-lg:0 6px 18px rgba(0,0,0,.4),0 30px 70px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);
+    font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent;overflow:hidden}
+  #app{height:100%;display:flex;flex-direction:column;max-width:720px;margin:0 auto;position:relative}
+  .screen{flex:1;min-height:0;display:none;flex-direction:column;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  .screen.on{display:flex}
+  .pad{padding:20px 18px calc(24px + env(safe-area-inset-bottom,0px))}
+  h1,h2,h3{font-family:var(--f-disp);font-weight:700;margin:0;text-wrap:balance;letter-spacing:-.02em}
+  .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  button:focus-visible,a:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+  /* ---------- HOME ---------- */
+  .home-top{padding:28px 18px 8px;text-align:center}
+  .brand-mark{width:56px;height:56px;margin:0 auto 14px;display:block}
+  .brand-h1{font-size:clamp(30px,9vw,40px);line-height:1;background:linear-gradient(100deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand-sub{color:var(--muted);margin-top:8px;font-size:14px}
+  .dedic{margin:14px auto 0;max-width:340px;font-size:13px;color:var(--faint);
+    background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 16px}
+  .dedic b{color:var(--accent);font-weight:700}
+  .section-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
+    font-weight:700;margin:26px 2px 12px}
+  .mode-card{width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-lg);padding:20px;box-shadow:var(--sh);display:flex;gap:16px;align-items:center;
+    transition:transform .16s ease,box-shadow .2s ease;margin-bottom:14px}
+  .mode-card:active{transform:scale(.985)}
+  @media(hover:hover){.mode-card:hover{transform:translateY(-2px);box-shadow:var(--sh-lg)}}
+  .mode-ic{width:54px;height:54px;border-radius:16px;flex:none;display:grid;place-items:center;
+    background:var(--accent-soft);color:var(--accent)}
+  .mode-ic.warm{background:var(--danger-soft);color:var(--danger)}
+  .mode-card h3{font-size:19px}
+  .mode-card p{margin:4px 0 0;color:var(--muted);font-size:13.5px}
+  .lvls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .lvl{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+    padding:16px 8px;text-align:center;box-shadow:var(--sh);transition:transform .15s}
+  .lvl:active{transform:scale(.97)}
+  .lvl[disabled]{opacity:.5;filter:grayscale(.4);cursor:not-allowed}
+  .lvl .n{font-family:var(--f-disp);font-size:26px;font-weight:800;color:var(--accent)}
+  .lvl .t{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.25}
+  .lvl .lock{font-size:11px;color:var(--faint);margin-top:6px}
+  .lvl .done{display:inline-block;margin-top:6px;font-size:10px;font-weight:700;color:var(--accent);
+    background:var(--accent-soft);border-radius:999px;padding:2px 8px}
+  .best{display:flex;gap:10px;margin-top:6px}
+  .best>div{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:12px;text-align:center;box-shadow:var(--sh)}
+  .best .v{font-family:var(--f-disp);font-size:24px;font-weight:800;color:var(--fg)}
+  .best .k{font-size:11px;color:var(--muted);letter-spacing:.04em}
+
+  /* ---------- TOPBAR (jogo) ---------- */
+  .topbar{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;
+    border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:5}
+  .icbtn{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--surface-2);
+    color:var(--fg);flex:none}
+  .icbtn:active{background:var(--surface-3)}
+  .tb-title{font-family:var(--f-disp);font-weight:700;font-size:15px}
+  .tb-sub{font-size:11.5px;color:var(--muted)}
+  .tb-spacer{flex:1}
+  .lives{display:flex;gap:4px}
+  .lives svg{width:22px;height:22px;color:var(--danger);transition:transform .2s,opacity .2s}
+  .lives .gone{opacity:.22;transform:scale(.8)}
+  .scorebox{text-align:right}
+  .scorebox .s{font-family:var(--f-mono);font-weight:600;font-size:17px;font-variant-numeric:tabular-nums}
+  .scorebox .m{font-size:10.5px;color:var(--accent);font-weight:700}
+
+  /* progress + timer */
+  .bar{height:6px;background:var(--surface-3);position:relative;overflow:hidden}
+  .bar>i{position:absolute;inset:0 100% 0 0;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:right .3s ease}
+  .timer{height:5px;background:var(--surface-3);overflow:hidden}
+  .timer>i{display:block;height:100%;width:100%;transform-origin:left;background:var(--accent)}
+  .timer>i.warn{background:var(--warn)}
+  .timer>i.crit{background:var(--danger)}
+
+  /* ---------- ECG PAPER ---------- */
+  .stage{padding:14px 14px 4px}
+  .qmeta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .chip{font-family:var(--f-mono);font-size:11.5px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:8px;padding:4px 9px;color:var(--muted)}
+  .chip b{color:var(--fg);font-weight:600}
+  .paperwrap{position:relative;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh);
+    background:var(--paper);border:1px solid var(--grid-maj);touch-action:none;animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  #ecg{display:block;width:100%;height:230px}
+  .paper-tools{position:absolute;top:8px;right:8px;display:flex;gap:6px}
+  .ptool{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.86);color:#5a3833;
+    display:grid;place-items:center;backdrop-filter:blur(4px);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+  .ptool:active{background:#fff}
+  .paper-cap{position:absolute;left:10px;bottom:7px;font-family:var(--f-mono);font-size:10px;color:var(--paper-fg)}
+  .src-tag{position:absolute;right:10px;bottom:7px;font-family:var(--f-mono);font-size:9.5px;color:var(--paper-fg);opacity:.8;max-width:60%;text-align:right}
+
+  /* ---------- ANSWERS ---------- */
+  .qlabel{padding:14px 16px 6px;font-size:14px;color:var(--muted)}
+  .qlabel b{color:var(--fg);font-weight:700}
+  .opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:6px 14px 14px}
+  .opt{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r-md);padding:15px 14px;
+    text-align:left;font-weight:600;font-size:14px;min-height:64px;display:flex;align-items:center;gap:9px;
+    box-shadow:var(--sh);transition:transform .12s,border-color .15s,background .15s;position:relative}
+  .opt:active{transform:scale(.97)}
+  .opt .k{font-family:var(--f-mono);font-size:12px;width:22px;height:22px;border-radius:7px;flex:none;
+    display:grid;place-items:center;background:var(--surface-3);color:var(--muted)}
+  .opt.correct{border-color:var(--accent);background:var(--accent-soft)}
+  .opt.correct .k{background:var(--accent);color:var(--accent-fg)}
+  .opt.wrong{border-color:var(--danger);background:var(--danger-soft)}
+  .opt.wrong .k{background:var(--danger);color:#fff}
+  .opt.dim{opacity:.5}
+  .opt[disabled]{cursor:default}
+  .hintbtn{margin:0 14px 8px;width:calc(100% - 28px);background:var(--surface-2);border:1px dashed var(--line);
+    border-radius:var(--r-sm);padding:11px;color:var(--accent);font-weight:700;font-size:13px}
+  .hintbox{margin:0 14px 8px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);
+    padding:12px 14px;font-size:13.5px;color:var(--muted)}
+  .hintbox ul{margin:0;padding-left:18px}
+
+  /* ---------- FEEDBACK ---------- */
+  .fb{margin:4px 14px calc(16px + env(safe-area-inset-bottom,0px));border-radius:var(--r-md);overflow:hidden;
+    box-shadow:var(--sh);animation:rise .3s ease both}
+  .fb-head{padding:14px 16px;display:flex;align-items:center;gap:12px;color:#fff}
+  .fb-head.ok{background:linear-gradient(100deg,var(--accent),var(--accent-2))}
+  .fb-head.no{background:linear-gradient(100deg,var(--danger),#b8323a)}
+  .fb-head .ic{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center;flex:none}
+  .fb-head .verdict{font-family:var(--f-disp);font-weight:700;font-size:16px}
+  .fb-head .dxname{font-size:12.5px;opacity:.92}
+  .fb-body{background:var(--surface);padding:14px 16px}
+  .fb-body p{margin:0 0 10px;font-size:13.7px;line-height:1.55;color:var(--fg)}
+  .feats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
+  .feat{background:var(--surface-2);border-radius:10px;padding:9px 11px}
+  .feat .k{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .feat .v{font-family:var(--f-mono);font-size:13px;margin-top:2px;color:var(--fg)}
+  .next{margin:6px 14px calc(18px + env(safe-area-inset-bottom,0px));width:calc(100% - 28px);
+    background:linear-gradient(100deg,var(--accent),var(--accent-2));color:var(--accent-fg);font-weight:800;
+    font-size:16px;border-radius:var(--r-md);padding:16px;box-shadow:var(--sh)}
+  .next:active{transform:scale(.98)}
+
+  /* ---------- RESULT ---------- */
+  .result{text-align:center;padding:32px 20px}
+  .result .big{font-family:var(--f-disp);font-size:clamp(44px,16vw,72px);font-weight:800;line-height:1;
+    background:linear-gradient(100deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .result .lbl{color:var(--muted);margin-top:4px}
+  .result h2{font-size:24px;margin-top:10px}
+  .rstats{display:flex;gap:10px;margin:22px 0}
+  .rstats>div{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:14px;box-shadow:var(--sh)}
+  .rstats .v{font-family:var(--f-disp);font-size:26px;font-weight:800}
+  .rstats .k{font-size:11px;color:var(--muted);margin-top:2px}
+  .review{text-align:left;margin-top:8px}
+  .review h3{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:10px}
+  .rev-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:11px 13px;margin-bottom:8px;font-size:13.5px}
+  .rev-item .dot{width:8px;height:8px;border-radius:50%;background:var(--danger);flex:none}
+  .rev-item .cnt{margin-left:auto;font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+  .btn-row{display:flex;gap:10px;margin-top:20px}
+  .btn{flex:1;border-radius:var(--r-md);padding:15px;font-weight:800;font-size:15px;box-shadow:var(--sh)}
+  .btn-primary{background:linear-gradient(100deg,var(--accent),var(--accent-2));color:var(--accent-fg)}
+  .btn-ghost{background:var(--surface);border:1px solid var(--line);color:var(--fg)}
+  .btn:active{transform:scale(.98)}
+  .pass-badge{display:inline-block;font-weight:700;font-size:13px;padding:6px 14px;border-radius:999px;margin-top:6px}
+  .pass-badge.ok{background:var(--accent-soft);color:var(--accent-2)}
+  .pass-badge.no{background:var(--danger-soft);color:var(--danger)}
+
+  /* ---------- FOOTER ---------- */
+  .foot{padding:16px 18px calc(20px + env(safe-area-inset-bottom,0px));text-align:center;border-top:1px solid var(--line);margin-top:auto}
+  .foot a{color:var(--accent);font-weight:700;text-decoration:none}
+  .foot a:hover{text-decoration:underline}
+  .foot .sm{display:block;color:var(--faint);font-size:11.5px;margin-top:4px}
+  .streak-pop{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:20;
+    font-family:var(--f-disp);font-weight:800;font-size:40px;color:var(--accent);opacity:0}
+  .streak-pop.go{animation:pop 1s ease both}
+  @keyframes pop{0%{opacity:0;transform:translate(-50%,-30%) scale(.6)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}70%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1)}}
+  .hb{color:var(--danger);display:inline-block;animation:beat 1.3s ease-in-out infinite}
+  @keyframes beat{0%,100%{transform:scale(1)}12%{transform:scale(1.32)}24%{transform:scale(1)}36%{transform:scale(1.22)}}
+  .dedic .hb{margin:0 3px}
+  /* confete */
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:40;display:none}
+  #confetti.on{display:block}
+  /* traçado didático + como reconhecer */
+  .teach{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .teach h4{font-family:var(--f-disp);font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent-2);margin:0 0 8px}
+  .teachpaper{border-radius:12px;overflow:hidden;background:var(--paper);border:1px solid var(--grid-maj);margin-bottom:12px}
+  .teachpaper canvas{display:block;width:100%;height:158px}
+  .recog{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:7px}
+  .recog li{display:flex;gap:9px;align-items:flex-start;font-size:13.3px;color:var(--fg)}
+  .recog li svg{flex:none;margin-top:2px;color:var(--accent)}
+  .care{display:flex;gap:9px;background:var(--surface-2);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--muted)}
+  .care svg{flex:none;color:var(--warn);margin-top:1px}
+  .care b{color:var(--fg)}
+  /* cards de aprendizado (tela final) */
+  .learn{text-align:left;margin-top:22px}
+  .learn h3{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:12px}
+  .lcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 15px;margin-bottom:10px;box-shadow:var(--sh)}
+  .lcard .lh{display:flex;align-items:center;gap:9px;font-family:var(--f-disp);font-weight:700;font-size:15px;margin-bottom:8px}
+  .lcard .lh .tag{margin-left:auto;font-family:var(--f-mono);font-size:10px;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:2px 8px}
+  .lcard ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+  .lcard li{display:flex;gap:8px;align-items:flex-start;font-size:12.8px;color:var(--muted)}
+  .lcard li svg{flex:none;margin-top:2px;color:var(--accent)}
+  .sound-off .lives svg,.sound-off #ic-sound{}
+  @media (min-width:600px){.opt{font-size:15px}.result .rstats .v{font-size:30px}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important;transition-duration:.001s!important}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<div id="app">
+  <!-- HOME -->
+  <section id="s-home" class="screen on">
+    <div class="home-top">
+      <svg class="brand-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="var(--accent-soft)"/>
+        <path d="M4 24h9l3-11 5 22 4-15 3 8h16" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1 class="brand-h1">Ritmo ECG</h1>
+      <p class="brand-sub">Treine a leitura de eletrocardiograma jogando</p>
+      <div class="dedic">Para a <b>Melissa</b> <span class="hb" aria-hidden="true">♥</span> a batida mais linda do meu coração</div>
+    </div>
+    <div class="pad" style="padding-top:6px">
+      <div class="section-label">Modos de jogo</div>
+      <button class="mode-card" id="go-levels">
+        <span class="mode-ic" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M7 20v-7M12 20V8M17 20v-11"/></svg>
+        </span>
+        <span><h3>Modo Níveis</h3><p>3 níveis, 10 casos cada. Acerte 80% para avançar e desbloquear o próximo.</p></span>
+      </button>
+      <button class="mode-card" id="go-infinite">
+        <span class="mode-ic warm" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"/></svg>
+        </span>
+        <span><h3>Modo Infinito</h3><p>3 vidas, 20s por caso e multiplicador de sequência. Vá o mais longe que conseguir.</p></span>
+      </button>
+
+      <div class="section-label">Escolha o nível</div>
+      <div class="lvls" id="lvl-grid"></div>
+
+      <div class="section-label">Seus recordes</div>
+      <div class="best">
+        <div><div class="v mono" id="best-score">0</div><div class="k">Melhor pontuação</div></div>
+        <div><div class="v mono" id="best-streak">0</div><div class="k">Maior sequência</div></div>
+      </div>
+    </div>
+    <div class="foot">
+      Feito por <a id="li" href="https://www.linkedin.com/in/samuelmauli" target="_blank" rel="noopener">Samuel Mauli</a>
+    </div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="s-play" class="screen">
+    <div class="topbar">
+      <button class="icbtn" id="btn-back" aria-label="Voltar ao início">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div><div class="tb-title" id="tb-title">Nível 1</div><div class="tb-sub" id="tb-sub">Caso 1 de 10</div></div>
+      <div class="tb-spacer"></div>
+      <div class="lives" id="lives" hidden></div>
+      <div class="scorebox" id="scorebox" hidden><div class="s mono" id="score">0</div><div class="m" id="mult">1×</div></div>
+      <button class="icbtn" id="btn-sound" aria-label="Ligar ou desligar som">
+        <svg id="ic-sound" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      </button>
+      <button class="icbtn" id="btn-theme" aria-label="Alternar tema">
+        <svg id="ic-theme" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+    <div class="bar" id="progwrap" hidden><i id="prog"></i></div>
+    <div class="timer" id="timerwrap" hidden><i id="timer"></i></div>
+
+    <div class="stage">
+      <div class="qmeta" id="qmeta"></div>
+      <div class="paperwrap">
+        <canvas id="ecg"></canvas>
+        <div class="paper-tools">
+          <button class="ptool" id="zoom-in" aria-label="Aproximar"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M20 20l-3.5-3.5"/></svg></button>
+          <button class="ptool" id="zoom-out" aria-label="Afastar"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-3.5-3.5"/></svg></button>
+          <button class="ptool" id="zoom-reset" aria-label="Ajustar à tela"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg></button>
+        </div>
+        <div class="paper-cap mono">25 mm/s · 10 mm/mV · derivação II</div>
+        <div class="src-tag mono" id="src-tag"></div>
+      </div>
+    </div>
+
+    <div class="qlabel">Qual é o <b>diagnóstico</b> deste traçado?</div>
+    <button class="hintbtn" id="hintbtn">Ver dica</button>
+    <div class="hintbox" id="hintbox" hidden></div>
+    <div class="opts" id="opts"></div>
+    <div id="fb-slot"></div>
+  </section>
+
+  <!-- RESULT -->
+  <section id="s-result" class="screen">
+    <div class="result" id="result-body"></div>
+    <div class="foot">
+      Feito por <a href="https://www.linkedin.com/in/samuelmauli" target="_blank" rel="noopener">Samuel Mauli</a>
+      <span class="sm">com todo o meu amor, para a minha enfermeira preferida — a Melissa <span class="hb">♥</span></span>
+    </div>
+  </section>
+</div>
+
+<div class="streak-pop mono" id="streakpop"></div>
+<canvas id="confetti"></canvas>
+
+<script>
+/* ===================== SINTETIZADOR DE ECG ===================== */
+const FS=400, DUR=6.7, T0=0.75, TEND=6.45;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function addWave(v,c,amp,widthMs){ // gaussiana em segundos
+  const sig=widthMs/1000, span=sig*4;
+  let i0=Math.max(0,Math.round((c-span)*FS)), i1=Math.min(v.length-1,Math.round((c+span)*FS));
+  for(let i=i0;i<=i1;i++){const t=i/FS;v[i]+=amp*Math.exp(-((t-c)*(t-c))/(2*sig*sig));}
+}
+function renderQRS(v,m){
+  const t=m.t, w=m.qrsWidth||1;
+  if(m.delta) addWave(v,t-0.05,m.delta,34);              // onda delta (WPW)
+  addWave(v,t-0.022*w,(m.q??-0.09),13*w);                // Q
+  addWave(v,t,(m.r??1.0),12*w);                          // R
+  addWave(v,t+0.030*w,(m.s??-0.22),15*w);                // S
+  if(m.rr2) addWave(v,t+0.058*w,m.rr2,16*w);             // R' (BRD)
+  if(m.notch) addWave(v,t+0.045,m.notch,7);              // entalhe J (RPB)
+  if(m.st) addWave(v,t+0.13,m.st,90);                    // supra/infra de ST
+  addWave(v,t+0.30,(m.tInvert?-1:1)*(m.twave??0.30),m.tWidth||44); // T
+}
+function synth(dx,seed){
+  const rng=mulberry32(seed>>>0), n=Math.round(DUR*FS), v=new Float32Array(n);
+  const b=dx.build(rng);
+  // baseline caótica/fibrilatória
+  if(b.baseline==='afib'){for(let i=0;i<n;i++){const t=i/FS;if(t<T0)continue;v[i]+=(rng()-.5)*.06+.035*Math.sin(t*2*Math.PI*(6+rng()*4));}}
+  else if(b.baseline==='flutter'){for(let i=0;i<n;i++){const t=i/FS;if(t<T0)continue;const ph=(t*5.0)%1;v[i]+=-0.16*(ph)+0.08;}}
+  else if(b.baseline==='vfib'){let f1=4+rng()*2,f2=6+rng()*3;for(let i=0;i<n;i++){const t=i/FS;if(t<T0)continue;v[i]+=(0.34+0.15*Math.sin(t*1.7))*Math.sin(t*2*Math.PI*f1)+0.22*Math.sin(t*2*Math.PI*f2+1.1)+(rng()-.5)*.12;}}
+  (b.pList||[]).forEach(p=>addWave(v,p.t,p.amp,p.width));
+  (b.qrsList||[]).forEach(m=>renderQRS(v,m));
+  // variedade cosmética por caso (mantém o diagnóstico, muda o "visual")
+  const ampScale=0.82+rng()*0.4;
+  for(let i=0;i<n;i++)v[i]*=ampScale;
+  // pulso de calibração 1 mV — referência fixa, aplicada DEPOIS do escalonamento
+  for(let i=Math.round(.28*FS);i<Math.round(.48*FS);i++)v[i]=1.0;
+  // deriva respiratória + ruído, com amplitude/fase variáveis por caso
+  const wA=0.008+rng()*0.032, wF=0.35+rng()*1.1, wP=rng()*6.283, nz=0.005+rng()*0.013;
+  for(let i=0;i<n;i++){const t=i/FS;if(t>=.55)v[i]+=wA*Math.sin(t*wF*2*Math.PI+wP)+(rng()-.5)*nz;}
+  return v;
+}
+/* helpers de ritmo */
+function sinus(rng,rate,pr,morph,pAmp){const rr=60/rate,p=[],q=[];const ph=rng()*rr*0.7;for(let t=T0+0.05+ph;t<TEND;t+=rr){p.push({t,amp:(pAmp??0.15),width:42});q.push(Object.assign({t:t+pr},morph||{}));}return{pList:p,qrsList:q};}
+function jr(rng,base,frac){return base*(1-frac+rng()*frac*2);}
+
+/* ===================== DIAGNÓSTICOS (PT-BR) ===================== */
+const DX=[
+/* ---------- NÍVEL 1 ---------- */
+{key:'rsn',n:'Ritmo Sinusal Normal',level:1,cat:'Ritmo de base',
+ dist:['Taquicardia Sinusal','Bradicardia Sinusal','Fibrilação Atrial'],
+ hints:['Onda P positiva antes de cada QRS, sempre igual.','Frequência entre 60 e 100 e intervalos R-R constantes.'],
+ exp:'Onda P sinusal positiva em DII precedendo cada QRS estreito, PR constante (0,12–0,20 s) e ritmo regular entre 60 e 100 bpm. É o padrão de referência da normalidade.',
+ feat:{fc:'60–100 bpm',pr:'0,12–0,20 s',qrs:'< 0,12 s',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,75,.13),0.16,{})},
+{key:'taqui',n:'Taquicardia Sinusal',level:1,cat:'Arritmia sinusal',
+ dist:['Ritmo Sinusal Normal','Flutter Atrial','Taquicardia Ventricular Monomórfica'],
+ hints:['Mesma sequência do ritmo sinusal, só que acelerada.','P presente antes de cada QRS, FC acima de 100.'],
+ exp:'Mesma despolarização do ritmo sinusal (P positiva antes de cada QRS estreito), porém acima de 100 bpm. Costuma ser resposta fisiológica a febre, dor, hipovolemia ou exercício.',
+ feat:{fc:'> 100 bpm',pr:'0,12–0,20 s',qrs:'< 0,12 s',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,125,.12),0.15,{})},
+{key:'bradi',n:'Bradicardia Sinusal',level:1,cat:'Arritmia sinusal',
+ dist:['Ritmo Sinusal Normal','Bloqueio AV Total','BAV de 1º Grau'],
+ hints:['Ritmo sinusal normal porém lento.','P antes de cada QRS, FC abaixo de 60.'],
+ exp:'Ritmo sinusal com onda P normal precedendo cada QRS, porém com FC abaixo de 60 bpm. Comum em atletas e durante o sono; pode ser sintomática se muito lenta.',
+ feat:{fc:'< 60 bpm',pr:'0,12–0,20 s',qrs:'< 0,12 s',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,46,.1),0.17,{})},
+{key:'fa',n:'Fibrilação Atrial',level:1,cat:'Arritmia supraventricular',
+ dist:['Ritmo Sinusal Normal','Flutter Atrial','Taquicardia Sinusal'],
+ hints:['Procure as ondas P — elas não existem de forma organizada.','Os intervalos R-R são imprevisíveis.'],
+ exp:'Ausência de ondas P organizadas, substituídas por ondas "f" fibrilatórias, com resposta ventricular irregularmente irregular (R-R imprevisível) e QRS estreito. Principal fonte de AVC cardioembólico.',
+ feat:{fc:'Variável',pr:'Ausente',qrs:'< 0,12 s',rit:'Irregular. irregular'},
+ build:rng=>{const q=[];let t=T0+0.1;while(t<TEND){q.push({t,r:0.9,twave:0.24});t+=0.42+rng()*0.6;}return{pList:[],qrsList:q,baseline:'afib'};}},
+{key:'tv',n:'Taquicardia Ventricular Monomórfica',level:1,cat:'Arritmia ventricular',
+ dist:['Taquicardia Sinusal','Fibrilação Ventricular','Flutter Atrial'],
+ hints:['Complexos QRS largos, rápidos e todos com a mesma forma.','Não há ondas P conduzindo os batimentos.'],
+ exp:'Taquicardia regular de complexo largo (QRS > 0,12 s), monomórfica, originada abaixo do feixe de His com dissociação AV. É emergência: pode degenerar em fibrilação ventricular.',
+ feat:{fc:'140–200 bpm',pr:'Ausente',qrs:'> 0,12 s (largo)',rit:'Regular'},
+ build:rng=>{const rr=60/jr(rng,170,.1),q=[];for(let t=T0+0.05;t<TEND;t+=rr)q.push({t,q:0,r:1.25,s:-0.55,qrsWidth:2.0,twave:0.35,tInvert:true});return{pList:[],qrsList:q};}},
+
+/* ---------- NÍVEL 2 ---------- */
+{key:'flutter',n:'Flutter Atrial',level:2,cat:'Arritmia supraventricular',
+ dist:['Fibrilação Atrial','Taquicardia Sinusal','BAV de 2º Grau Mobitz II'],
+ hints:['Ondas atriais em "dente de serra" contínuo (ondas F).','Condução AV frequentemente 2:1.'],
+ exp:'Ondas F em padrão de "dente de serra" a cerca de 300/min, bem visíveis nas derivações inferiores, geralmente com condução AV fixa (2:1 → ~150 bpm ventricular). QRS estreito.',
+ feat:{fc:'~150 bpm (2:1)',pr:'Ondas F 300/min',qrs:'< 0,12 s',rit:'Regular'},
+ build:rng=>{const rr=0.4,q=[];for(let t=T0+0.2;t<TEND;t+=rr)q.push({t,r:0.85,twave:0.0});return{pList:[],qrsList:q,baseline:'flutter'};}},
+{key:'bav1',n:'BAV de 1º Grau',level:2,cat:'Transtorno de condução',
+ dist:['Ritmo Sinusal Normal','BAV de 2º Grau Mobitz I','Bradicardia Sinusal'],
+ hints:['Toda P conduz, mas o intervalo PR está longo.','PR fixo e maior que 0,20 s (um quadrado grande).'],
+ exp:'Prolongamento fixo do intervalo PR acima de 0,20 s, sem falha de condução — toda onda P é seguida de QRS. Geralmente benigno.',
+ feat:{fc:'60–90 bpm',pr:'> 0,20 s (fixo)',qrs:'< 0,12 s',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,68,.1),0.32,{})},
+{key:'mobitz1',n:'BAV de 2º Grau Mobitz I (Wenckebach)',level:2,cat:'Transtorno de condução',
+ dist:['BAV de 2º Grau Mobitz II','BAV de 1º Grau','Bloqueio AV Total'],
+ hints:['Analise o PR batimento a batimento.','O PR aumenta progressivamente até uma P bloquear (QRS falha).'],
+ exp:'Prolongamento progressivo do PR a cada batimento até que uma onda P não conduz (QRS ausente), reiniciando o ciclo. Costuma ser nodal e benigno.',
+ feat:{fc:'~55–70 bpm',pr:'Aumenta até bloquear',qrs:'< 0,12 s',rit:'Irregular (agrupado)'},
+ build:rng=>{const rr=60/62,p=[],q=[];let pr=0.16,cnt=0;for(let t=T0+0.05;t<TEND;t+=rr){p.push({t,amp:0.15,width:42});cnt++;if(cnt%4===0){pr=0.16;}else{q.push({t:t+pr});pr+=0.06;}}return{pList:p,qrsList:q};}},
+{key:'mobitz2',n:'BAV de 2º Grau Mobitz II',level:2,cat:'Transtorno de condução',
+ dist:['BAV de 2º Grau Mobitz I (Wenckebach)','Bloqueio AV Total','BAV de 1º Grau'],
+ hints:['PR constante nos batimentos conduzidos.','De repente uma P bloqueia sem aviso (QRS some).'],
+ exp:'Intervalos PR constantes intercalados por bloqueios súbitos da condução (P sem QRS), sem alongamento prévio do PR. Infra-His: alto risco de progredir para BAV total — costuma exigir marca-passo.',
+ feat:{fc:'Variável',pr:'Fixo (conduzidos)',qrs:'≥ 0,12 s',rit:'Irregular (P bloqueia)'},
+ build:rng=>{const rr=60/72,p=[],q=[];let cnt=0;for(let t=T0+0.05;t<TEND;t+=rr){p.push({t,amp:0.15,width:42});cnt++;if(cnt%3!==0)q.push({t:t+0.18});}return{pList:p,qrsList:q};}},
+{key:'bavt',n:'Bloqueio AV Total',level:2,cat:'Transtorno de condução',
+ dist:['BAV de 2º Grau Mobitz II','Bradicardia Sinusal','BAV de 1º Grau'],
+ hints:['As ondas P e os QRS marcham em ritmos próprios.','Não há relação fixa entre P e QRS (dissociação AV completa).'],
+ exp:'Dissociação AV completa: átrios e ventrículos despolarizam de forma independente. Ondas P regulares "atravessam" QRS de escape lento e largo, sem qualquer relação PR fixa. Emergência de marca-passo.',
+ feat:{fc:'Vent. 30–45 bpm',pr:'Dissociado',qrs:'Largo (escape)',rit:'P e QRS independentes'},
+ build:rng=>{const p=[],q=[];const prr=60/82;for(let t=T0;t<TEND;t+=prr)p.push({t,amp:0.15,width:42});const qrr=60/38;let off=0.1+rng()*0.3;for(let t=T0+off;t<TEND;t+=qrr)q.push({t,q:0,r:0.95,s:-0.35,qrsWidth:1.8,twave:0.3,tInvert:true});return{pList:p,qrsList:q};}},
+{key:'brd',n:'Bloqueio de Ramo Direito',level:2,cat:'Condução intraventricular',
+ dist:['Bloqueio de Ramo Esquerdo','Taquicardia Ventricular Monomórfica','Ritmo Sinusal Normal'],
+ hints:['QRS alargado com P sinusal presente (não é ventricular).','Padrão rSR\' — duplo pico (orelhas de coelho) do QRS.'],
+ exp:'QRS ≥ 0,12 s com morfologia rSR\' ("orelhas de coelho") em V1–V2 e onda S alargada em DI/V6, precedido de onda P sinusal normal. A condução ventricular direita se faz tardiamente.',
+ feat:{fc:'60–90 bpm',pr:'Normal',qrs:'≥ 0,12 s (rSR\')',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,72,.1),0.16,{r:0.7,rr2:0.9,s:-0.15,qrsWidth:1.7,tInvert:true,twave:0.25})},
+{key:'bre',n:'Bloqueio de Ramo Esquerdo',level:2,cat:'Condução intraventricular',
+ dist:['Bloqueio de Ramo Direito','Taquicardia Ventricular Monomórfica','Ritmo Sinusal Normal'],
+ hints:['QRS largo e alargado, com P sinusal presente.','Onda R larga e entalhada em DI, aVL, V5–V6.'],
+ exp:'QRS ≥ 0,12 s com onda R larga, monofásica e entalhada em DI/aVL/V5/V6 e repolarização discordante. Precedido de P sinusal. Um BRE novo com dor torácica é equivalente de IAM.',
+ feat:{fc:'60–90 bpm',pr:'Normal',qrs:'≥ 0,12 s (R largo)',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,70,.1),0.16,{q:0,r:1.2,s:-0.05,notch:0.25,qrsWidth:1.8,tInvert:true,twave:0.3})},
+
+/* ---------- NÍVEL 3 ---------- */
+{key:'iamst',n:'Infarto Agudo com Supra de ST (IAMST)',level:3,cat:'Emergência isquêmica',
+ dist:['Pericardite Aguda','Repolarização Precoce Benigna','Bloqueio de Ramo Esquerdo'],
+ hints:['Olhe a linha entre o QRS e a onda T (segmento ST).','Elevação convexa do ST partindo do ponto J.'],
+ exp:'Elevação convexa ("em abóbada") do segmento ST a partir do ponto J, tipicamente em derivações anatomicamente contíguas, com alterações recíprocas em espelho. É oclusão coronariana aguda — ativar hemodinâmica.',
+ feat:{fc:'60–100 bpm',pr:'Normal',qrs:'< 0,12 s',rit:'Regular / supra ST'},
+ build:rng=>sinus(rng,jr(rng,78,.1),0.16,{st:0.35,twave:0.4,tWidth:52})},
+{key:'peric',n:'Pericardite Aguda',level:3,cat:'Inflamação pericárdica',
+ dist:['Infarto Agudo com Supra de ST (IAMST)','Repolarização Precoce Benigna','Ritmo Sinusal Normal'],
+ hints:['Supra de ST difuso e côncavo, em várias derivações.','Procure infra do segmento PR.'],
+ exp:'Elevação difusa e côncava do segmento ST associada a infradesnivelamento do PR na maioria das derivações (exceto aVR). Ao contrário do IAM, não segue território coronariano e não há imagem recíproca.',
+ feat:{fc:'80–110 bpm',pr:'Infra de PR',qrs:'< 0,12 s',rit:'Supra ST difuso/côncavo'},
+ build:rng=>{const s=sinus(rng,jr(rng,92,.1),0.16,{st:0.14,twave:0.3});s.pList.forEach(p=>{s.pList.push({t:p.t+0.075,amp:-0.06,width:34});});return s;}},
+{key:'rpb',n:'Repolarização Precoce Benigna',level:3,cat:'Variação da repolarização',
+ dist:['Infarto Agudo com Supra de ST (IAMST)','Pericardite Aguda','Ritmo Sinusal Normal'],
+ hints:['Discreta elevação do ponto J com entalhe.','Entalhe em "anzol" (fish-hook) no ponto J.'],
+ exp:'Entalhe em "anzol" no ponto J com discreta elevação côncava do ST e ondas T amplas, típico de jovens saudáveis. Razão ST/T baixa em V6 ajuda a diferenciar de IAM e pericardite.',
+ feat:{fc:'55–75 bpm',pr:'Normal',qrs:'< 0,12 s',rit:'Ponto J com entalhe'},
+ build:rng=>sinus(rng,jr(rng,64,.1),0.16,{notch:0.16,st:0.08,twave:0.42,tWidth:50})},
+{key:'wpw',n:'Síndrome de Wolff-Parkinson-White',level:3,cat:'Pré-excitação ventricular',
+ dist:['Bloqueio de Ramo Esquerdo','Ritmo Sinusal Normal','Taquicardia Ventricular Monomórfica'],
+ hints:['PR muito curto (< 0,12 s).','Início do QRS "borrado" — a onda delta.'],
+ exp:'Via acessória (feixe de Kent) gera PR curto (< 0,12 s), onda delta (empastamento inicial do QRS) e QRS alargado. Predispõe a taquicardias por reentrada.',
+ feat:{fc:'60–100 bpm',pr:'< 0,12 s (curto)',qrs:'Alargado + delta',rit:'Regular'},
+ build:rng=>sinus(rng,jr(rng,76,.1),0.09,{delta:0.28,qrsWidth:1.35,twave:0.28})},
+{key:'fv',n:'Fibrilação Ventricular',level:3,cat:'Parada cardíaca / emergência',
+ dist:['Taquicardia Ventricular Monomórfica','Torsades de Pointes','Flutter Atrial'],
+ hints:['Não há QRS, P ou T identificáveis.','Ondulações caóticas e irregulares — desfibrile.'],
+ exp:'Atividade elétrica caótica, sem QRS, ondas P ou T reconhecíveis. Corresponde a parada cardíaca — indica RCP imediata e desfibrilação.',
+ feat:{fc:'Indeterminada',pr:'Ausente',qrs:'Ausente',rit:'Caótico'},
+ build:rng=>({pList:[],qrsList:[],baseline:'vfib'})},
+{key:'torsades',n:'Torsades de Pointes',level:3,cat:'Arritmia ventricular',
+ dist:['Fibrilação Ventricular','Taquicardia Ventricular Monomórfica','Fibrilação Atrial'],
+ hints:['Taquicardia de complexo largo que "gira" em torno da linha de base.','A amplitude cresce e diminui em fusos — polimórfica.'],
+ exp:'Taquicardia ventricular polimórfica com QRS que parece "torcer" ao redor da linha de base, com amplitude que aumenta e diminui. Associada a QT longo; tratar com sulfato de magnésio.',
+ feat:{fc:'200–250 bpm',pr:'Ausente',qrs:'Largo, polimórfico',rit:'Amplitude em fusos'},
+ build:rng=>{const rr=60/220,q=[];let i=0;for(let t=T0+0.05;t<TEND;t+=rr){const env=Math.sin(i*0.5);q.push({t,q:0,r:1.15*env,s:-0.5*env,qrsWidth:1.8,twave:0.1*env});i++;}return{pList:[],qrsList:q};}},
+{key:'hiperk',n:'Hipercalemia',level:3,cat:'Distúrbio eletrolítico',
+ dist:['Repolarização Precoce Benigna','Infarto Agudo com Supra de ST (IAMST)','Ritmo Sinusal Normal'],
+ hints:['Repare no formato da onda T.','Ondas T altas, estreitas e apiculadas ("em tenda").'],
+ exp:'Potássio elevado produz ondas T apiculadas "em tenda", achatamento da onda P e alargamento progressivo do QRS. Pode evoluir para onda sinusoidal e assistolia — emergência metabólica.',
+ feat:{fc:'60–100 bpm',pr:'P achatada',qrs:'Alargado',rit:'T apiculada em tenda'},
+ build:rng=>sinus(rng,jr(rng,74,.1),0.18,{qrs:1.0,qrsWidth:1.4,twave:0.95,tWidth:26},0.03)},
+];
+
+/* ===================== CONTEÚDO DIDÁTICO EXTRA ===================== */
+/* recog = como reconhecer · care = por que importa · annot = marcações no traçado (frac 0..1 na largura) */
+const EXTRA={
+ rsn:{recog:['Onda P positiva e igual antes de cada QRS','FC 60–100 com R-R constante','QRS estreito (< 0,12 s)'],care:'É o padrão de normalidade — a régua contra a qual todos os outros ritmos são comparados.',annot:[{k:'point',f:0.34,l:'P antes do QRS'}]},
+ taqui:{recog:['Ritmo sinusal, porém FC > 100','P ainda presente antes de cada QRS','R-R curto e regular'],care:'Quase sempre é resposta a algo (febre, dor, hipovolemia, ansiedade). Trate a causa, não só a frequência.',annot:[{k:'span',f:0.32,f2:0.68,l:'R-R curto'}]},
+ bradi:{recog:['Ritmo sinusal com FC < 60','P normal antes de cada QRS','R-R longo e regular'],care:'Fisiológica em atletas e no sono. Investigue se houver síncope, tontura ou hipotensão.',annot:[{k:'span',f:0.3,f2:0.82,l:'R-R longo'}]},
+ fa:{recog:['Nenhuma onda P organizada (ondas "f")','Intervalos R-R irregularmente irregulares','QRS estreito'],care:'Principal causa de AVC cardioembólico — avalie anticoagulação (escore CHA₂DS₂-VASc).',annot:[{k:'span',f:0.24,f2:0.82,l:'Sem P · R-R irregular'}]},
+ tv:{recog:['QRS largo (> 0,12 s), todos iguais','Rápida e regular','Sem relação com ondas P'],care:'Emergência: pode virar fibrilação ventricular. Instável → cardioversão; estável → antiarrítmico.',annot:[{k:'point',f:0.42,l:'QRS largo, sem P'}]},
+ flutter:{recog:['Ondas F em "dente de serra" contínuo (~300/min)','Melhor vistas em DII, DIII, aVF','Condução AV fixa (2:1 → ~150 bpm)'],care:'Risco tromboembólico semelhante ao da FA. Responde bem à ablação do istmo cavotricúspide.',annot:[{k:'span',f:0.2,f2:0.6,l:'Ondas F (dente de serra)'}]},
+ bav1:{recog:['PR > 0,20 s, fixo','Toda P conduz (nenhum QRS falha)','Ritmo regular'],care:'Geralmente benigno e não precisa de tratamento — mas registre e acompanhe.',annot:[{k:'point',f:0.34,l:'PR longo e fixo'}]},
+ mobitz1:{recog:['PR aumenta batimento a batimento','Até uma P bloquear (QRS ausente)','O ciclo então recomeça'],care:'Costuma ser nodal e benigno. Raramente exige marca-passo.',annot:[{k:'span',f:0.24,f2:0.76,l:'PR ↑ até bloquear'}]},
+ mobitz2:{recog:['PR constante nos conduzidos','P que bloqueia de repente, sem aviso','Sem alongamento prévio do PR'],care:'Infra-His — alto risco de progredir para BAV total. Costuma indicar marca-passo.',annot:[{k:'point',f:0.5,l:'P bloqueada'}]},
+ bavt:{recog:['P regulares e QRS regulares, porém independentes','Nenhuma relação PR fixa (dissociação AV)','QRS de escape lento e largo'],care:'Emergência de marca-passo — considere marca-passo transcutâneo enquanto aguarda.',annot:[{k:'span',f:0.2,f2:0.8,l:'P e QRS independentes'}]},
+ brd:{recog:['QRS ≥ 0,12 s com P sinusal presente','Padrão rSR\' ("orelhas de coelho") em V1','S alargada em DI e V6'],care:'Pode ser normal. Isolado, raramente tem significado — o contexto clínico manda.',annot:[{k:'point',f:0.42,l:'QRS largo (rSR\')'}]},
+ bre:{recog:['QRS ≥ 0,12 s com P sinusal presente','R larga, monofásica e entalhada em DI/V6','Repolarização discordante'],care:'BRE novo com dor torácica = equivalente de IAM. Trate como síndrome coronariana.',annot:[{k:'point',f:0.42,l:'QRS largo entalhado'}]},
+ iamst:{recog:['ST elevado e convexo ("em abóbada")','Em duas ou mais derivações contíguas','Imagem recíproca (espelho)'],care:'Oclusão coronariana aguda: tempo é músculo. Ativar hemodinâmica imediatamente.',annot:[{k:'point',f:0.4,l:'Supra de ST convexo'}]},
+ peric:{recog:['Supra de ST difuso e côncavo','Infra do segmento PR','Não segue território coronariano'],care:'Ao contrário do IAM, é difuso e sem imagem recíproca. Dor piora ao deitar e melhora sentado.',annot:[{k:'span',f:0.3,f2:0.72,l:'Supra difuso + infra de PR'}]},
+ rpb:{recog:['Entalhe em "anzol" no ponto J','Discreta elevação côncava do ST','Comum em jovens saudáveis'],care:'Variante benigna. O desafio é não confundir com IAM — use a razão ST/T em V6.',annot:[{k:'point',f:0.4,l:'Entalhe no ponto J'}]},
+ wpw:{recog:['PR curto (< 0,12 s)','Onda delta (empastamento inicial do QRS)','QRS alargado'],care:'Via acessória predispõe a taquicardias por reentrada — cuidado com certos fármacos na FA associada.',annot:[{k:'point',f:0.4,l:'PR curto + onda delta'}]},
+ fv:{recog:['Sem QRS, P ou T reconhecíveis','Ondulações caóticas e irregulares','Amplitude variável'],care:'É parada cardíaca. RCP de alta qualidade e desfibrilação sem demora.',annot:[{k:'span',f:0.2,f2:0.8,l:'Sem complexos organizados'}]},
+ torsades:{recog:['TV polimórfica de complexo largo','QRS "torce" ao redor da linha de base','Amplitude cresce e diminui em fusos'],care:'Associada a QT longo. Sulfato de magnésio EV; corrigir eletrólitos e suspender fármacos culpados.',annot:[{k:'span',f:0.2,f2:0.8,l:'Amplitude em fusos'}]},
+ hiperk:{recog:['Ondas T altas, estreitas e apiculadas ("em tenda")','P achatada ou ausente','QRS alargado que pode virar sinusoide'],care:'Emergência metabólica: gluconato de cálcio protege o miocárdio; depois desloque e elimine o potássio.',annot:[{k:'point',f:0.42,l:'T apiculada em tenda'}]},
+};
+
+/* ===================== SOM (Web Audio, sintetizado) ===================== */
+let AC=null;
+let muted=(()=>{try{return localStorage.getItem('ritmoMute')==='1'}catch(e){return false}})();
+function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){return null}}if(AC&&AC.state==='suspended')AC.resume();return AC;}
+function ping(a,f,t,dur,type,peak){const o=a.createOscillator(),g=a.createGain();o.type=type||'triangle';o.frequency.setValueAtTime(f,t);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak||0.22,t+0.012);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+0.03);}
+function brass(a,f0,f1,t,dur,peak){const o=a.createOscillator(),g=a.createGain(),lp=a.createBiquadFilter();
+  o.type='sawtooth';lp.type='lowpass';lp.frequency.value=1500;
+  o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak||0.2,t+0.04);g.gain.setValueAtTime(peak||0.2,t+dur*0.6);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(lp);lp.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+0.05);}
+function sfxCorrect(){const a=ac();if(!a||muted)return;let t=a.currentTime;[659.25,987.77,1318.5].forEach((f,i)=>{ping(a,f,t,0.16,'triangle',0.24);t+=0.085;});}
+function sfxWrong(){const a=ac();if(!a||muted)return;let t=a.currentTime;const seq=[233.08,207.65,185.00,146.83];
+  seq.forEach((f,i)=>{const dur=i===3?0.62:0.26;brass(a,f,f*0.89,t,dur,0.2);t+=dur*0.9;});}  // "qua-qua-qua-quaaa"
+function sfxWin(){const a=ac();if(!a||muted)return;let t=a.currentTime;[523.25,659.25,783.99].forEach(f=>{ping(a,f,t,0.13,'square',0.16);t+=0.12;});
+  ping(a,1046.5,t,0.5,'triangle',0.26);ping(a,1318.5,t,0.5,'triangle',0.16);}
+function sfxLose(){const a=ac();if(!a||muted)return;let t=a.currentTime;[293.66,246.94,196.00,155.56].forEach((f,i)=>{brass(a,f,f*0.9,t,i===3?0.7:0.3,0.18);t+=0.28;});}
+function updSoundBtn(){const b=$('#ic-sound');if(!b)return;b.innerHTML=muted
+  ?'<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/>'
+  :'<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>';}
+
+/* ===================== CONFETE ===================== */
+const confCv=document.getElementById('confetti'),confCtx=confCv.getContext('2d');
+let confParts=[],confRAF=null;
+const CONF_COLORS=['#0f9d76','#2bd4a3','#d99a12','#e0424a','#3b82f6','#f59e0b'];
+const REDUCED=matchMedia('(prefers-reduced-motion:reduce)').matches;
+function confResize(){const d=Math.min(devicePixelRatio||1,2);confCv.width=innerWidth*d;confCv.height=innerHeight*d;confCtx.setTransform(d,0,0,d,0,0);}
+function confetti(power){ // power 1..3
+  if(REDUCED)return;confResize();confCv.classList.add('on');
+  const n=power===3?170:power===2?90:40;
+  const cx=innerWidth/2, cy=power>=2?innerHeight*0.32:innerHeight*0.5;
+  for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=4+Math.random()*10*power;
+    confParts.push({x:cx+(Math.random()-.5)*120,y:cy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-6,
+      w:5+Math.random()*7,h:8+Math.random()*10,rot:Math.random()*6.28,vr:(Math.random()-.5)*0.4,
+      c:CONF_COLORS[i%CONF_COLORS.length],life:0,max:90+Math.random()*60});}
+  if(!confRAF)confTick();
+}
+function confTick(){confCtx.clearRect(0,0,confCv.width,confCv.height);
+  confParts=confParts.filter(p=>{p.life++;p.vy+=0.28;p.vx*=0.99;p.x+=p.vx;p.y+=p.vy;p.rot+=p.vr;
+    const al=Math.max(0,1-p.life/p.max);if(al<=0||p.y>innerHeight+40)return false;
+    confCtx.save();confCtx.globalAlpha=al;confCtx.translate(p.x,p.y);confCtx.rotate(p.rot);
+    confCtx.fillStyle=p.c;confCtx.fillRect(-p.w/2,-p.h/2,p.w,p.h);confCtx.restore();return true;});
+  if(confParts.length)confRAF=requestAnimationFrame(confTick);
+  else{confRAF=null;confCv.classList.remove('on');confCtx.clearRect(0,0,confCv.width,confCv.height);}
+}
+window.addEventListener('resize',()=>{if(confParts.length)confResize();});
+
+/* ===================== TRAÇADO DIDÁTICO (anotado) ===================== */
+function paintStrip(canvas,sig,annot){
+  const ctx2=canvas.getContext('2d');const r=canvas.parentElement.getBoundingClientRect();
+  const w=r.width,h=158,dpr=Math.min(devicePixelRatio||1,2.5);
+  canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);canvas.style.height=h+'px';ctx2.setTransform(dpr,0,0,dpr,0,0);
+  const cs=getComputedStyle(document.documentElement);
+  const paper=cs.getPropertyValue('--paper').trim(),gMin=cs.getPropertyValue('--grid-min').trim(),
+        gMaj=cs.getPropertyValue('--grid-maj').trim(),trace=cs.getPropertyValue('--trace').trim(),
+        acc=cs.getPropertyValue('--accent-2').trim()||'#0b7d5e';
+  ctx2.fillStyle=paper;ctx2.fillRect(0,0,w,h);
+  const widthMm=(sig.length/FS)*25, p=(w-8)/widthMm, panX=4, mid=h/2+8;
+  for(let mm=0;mm<=Math.ceil(widthMm);mm++){const x=panX+mm*p;ctx2.strokeStyle=(mm%5===0)?gMaj:gMin;ctx2.globalAlpha=(mm%5===0)?.8:.5;ctx2.beginPath();ctx2.moveTo(x,0);ctx2.lineTo(x,h);ctx2.stroke();}
+  const hm=Math.ceil((h)/p);for(let mm=-hm;mm<=hm;mm++){const y=mid+mm*p;if(y<0||y>h)continue;ctx2.strokeStyle=(mm%5===0)?gMaj:gMin;ctx2.globalAlpha=(mm%5===0)?.8:.5;ctx2.beginPath();ctx2.moveTo(0,y);ctx2.lineTo(w,y);ctx2.stroke();}
+  ctx2.globalAlpha=1;ctx2.strokeStyle=trace;ctx2.lineWidth=1.5;ctx2.lineJoin='round';ctx2.lineCap='round';ctx2.beginPath();
+  let st=false;for(let i=0;i<sig.length;i++){const x=panX+((i/FS)*25)*p,y=mid-sig[i]*10*p;if(!st){ctx2.moveTo(x,y);st=true;}else ctx2.lineTo(x,y);}
+  ctx2.stroke();
+  // anotações
+  ctx2.font='600 11px '+cs.getPropertyValue('--f-body');ctx2.textBaseline='middle';
+  (annot||[]).forEach(an=>{
+    const x1=panX+ (an.f)*(w-8);
+    ctx2.setLineDash([4,3]);ctx2.strokeStyle=acc;ctx2.lineWidth=1.4;ctx2.globalAlpha=.9;
+    if(an.k==='span'){const x2=panX+an.f2*(w-8);
+      ctx2.beginPath();ctx2.moveTo(x1,14);ctx2.lineTo(x1,h-6);ctx2.moveTo(x2,14);ctx2.lineTo(x2,h-6);ctx2.stroke();
+      ctx2.setLineDash([]);ctx2.beginPath();ctx2.moveTo(x1,14);ctx2.lineTo(x2,14);ctx2.stroke();
+      pill(ctx2,(x1+x2)/2,8,an.l,acc,paper,w,true);
+    }else{ctx2.beginPath();ctx2.moveTo(x1,16);ctx2.lineTo(x1,h-6);ctx2.stroke();ctx2.setLineDash([]);
+      pill(ctx2,x1,8,an.l,acc,paper,w,true);}
+    ctx2.globalAlpha=1;
+  });
+}
+function pill(ctx2,cx,cy,text,fg,bg,maxW,center){
+  const tw=ctx2.measureText(text).width, pad=6, w=tw+pad*2, h=16;
+  let x=center?cx-w/2:cx; x=Math.max(2,Math.min(maxW-w-2,x));
+  ctx2.globalAlpha=1;ctx2.fillStyle=bg;ctx2.strokeStyle=fg;ctx2.lineWidth=1;ctx2.setLineDash([]);
+  rr(ctx2,x,cy,w,h,8);ctx2.fill();ctx2.stroke();
+  ctx2.fillStyle=fg;ctx2.textAlign='left';ctx2.fillText(text,x+pad,cy+h/2);
+}
+function rr(ctx2,x,y,w,h,r){ctx2.beginPath();ctx2.moveTo(x+r,y);ctx2.arcTo(x+w,y,x+w,y+h,r);ctx2.arcTo(x+w,y+h,x,y+h,r);ctx2.arcTo(x,y+h,x,y,r);ctx2.arcTo(x,y,x+w,y,r);ctx2.closePath();}
+
+/* ===================== ESTADO / PERSISTÊNCIA ===================== */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const LS='ritmoEcg.v1';
+function loadSave(){try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}}
+function persist(){try{localStorage.setItem(LS,JSON.stringify(save))}catch(e){}}
+let save=Object.assign({unlocked:1,bestScore:0,bestStreak:0},loadSave());
+const LEVEL_NAMES={1:'Fundamentos e ritmos de base',2:'Condução e supraventriculares',3:'Emergências e síndromes'};
+const PASS=8; // 8/10 = 80%
+
+let G={screen:'home',mode:null,level:1,queue:[],idx:0,correct:0,
+  lives:3,score:0,streak:0,bestStreakRun:0,missed:{},answered:false,cur:null,sig:null,pts:null,
+  timer:null,timerRAF:null,tStart:0};
+
+/* ===================== TEMA ===================== */
+(function initTheme(){const t=(()=>{try{return localStorage.getItem('ritmoTheme')}catch(e){return null}})();
+  if(t)document.documentElement.setAttribute('data-theme',t);})();
+$('#btn-theme').onclick=()=>{const cur=document.documentElement.getAttribute('data-theme');
+  const isDark=cur?cur==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
+  const nx=isDark?'light':'dark';document.documentElement.setAttribute('data-theme',nx);
+  try{localStorage.setItem('ritmoTheme',nx)}catch(e){}redrawEcg();};
+
+/* ===================== SOM: botão + desbloqueio ===================== */
+updSoundBtn();
+$('#btn-sound').onclick=()=>{muted=!muted;try{localStorage.setItem('ritmoMute',muted?'1':'0')}catch(e){}
+  updSoundBtn();if(!muted){ac();sfxCorrect();}};
+window.addEventListener('pointerdown',()=>{ac();},{once:true});
+
+/* ===================== NAVEGAÇÃO DE TELAS ===================== */
+function show(id){$$('.screen').forEach(s=>s.classList.remove('on'));$('#'+id).classList.add('on');
+  $('#'+id).scrollTop=0;G.screen=id;}
+
+/* ===================== HOME ===================== */
+function renderHome(){
+  $('#best-score').textContent=save.bestScore;
+  $('#best-streak').textContent=save.bestStreak;
+  const grid=$('#lvl-grid');grid.innerHTML='';
+  for(let l=1;l<=3;l++){
+    const locked=l>save.unlocked;
+    const b=document.createElement('button');b.className='lvl';if(locked)b.disabled=true;
+    const done=save['done'+l];
+    b.innerHTML=`<div class="n">${l}</div><div class="t">${['Básico','Intermediário','Avançado'][l-1]}</div>`+
+      (locked?`<div class="lock">🔒 bloqueado</div>`:(done?`<span class="done">concluído</span>`:`<div class="lock">jogar</div>`));
+    if(!locked)b.onclick=()=>startLevels(l);
+    grid.appendChild(b);
+  }
+}
+$('#go-levels').onclick=()=>startLevels(save.unlocked);
+$('#go-infinite').onclick=startInfinite;
+$('#btn-back').onclick=()=>{stopTimer();show('s-home');renderHome();};
+
+/* ===================== MONTAR FILA ===================== */
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function levelQueue(level,count){const pool=DX.filter(d=>d.level===level);const q=[];let bag=[];
+  while(q.length<count){if(!bag.length)bag=shuffle([...pool]);
+    const cand=bag.pop();
+    // evita o mesmo diagnóstico duas vezes seguidas quando há alternativa
+    if(q.length&&q[q.length-1]===cand&&bag.length){bag.unshift(cand);continue;}
+    q.push(cand);}
+  return q.map(dx=>({dx,seed:(Math.random()*1e9)|0}));}
+let lastInf=null;
+function pickInfinite(){let dx,tries=0;do{dx=G.pool[(Math.random()*G.pool.length)|0];tries++;}while(dx===lastInf&&G.pool.length>1&&tries<8);lastInf=dx;return dx;}
+
+function startLevels(level){G.mode='levels';G.level=level;G.queue=levelQueue(level,10);G.idx=0;G.correct=0;G.missed={};
+  $('#lives').hidden=true;$('#scorebox').hidden=true;$('#progwrap').hidden=false;$('#timerwrap').hidden=true;
+  show('s-play');loadCase();}
+
+function startInfinite(){G.mode='infinite';G.lives=3;G.score=0;G.streak=0;G.bestStreakRun=0;G.missed={};
+  const pools=[];for(let l=1;l<=save.unlocked;l++)pools.push(...DX.filter(d=>d.level===l));G.pool=pools;
+  $('#lives').hidden=false;$('#scorebox').hidden=false;$('#progwrap').hidden=true;$('#timerwrap').hidden=false;
+  renderLives();updateScore();show('s-play');nextInfinite();}
+
+function nextInfinite(){const dx=pickInfinite();G.cur={dx,seed:(Math.random()*1e9)|0};renderCase();}
+
+/* ===================== CARREGAR CASO ===================== */
+function loadCase(){G.cur=G.queue[G.idx];renderCase();}
+
+function renderCase(){
+  G.answered=false;
+  const {dx,seed}=G.cur;
+  // topbar
+  if(G.mode==='levels'){
+    $('#tb-title').textContent='Nível '+G.level;
+    $('#tb-sub').textContent=`Caso ${G.idx+1} de 10 · ${G.correct} acerto${G.correct===1?'':'s'}`;
+    $('#prog').style.right=(100-(G.idx/10*100))+'%';
+  }else{
+    $('#tb-title').textContent='Modo Infinito';
+    $('#tb-sub').textContent='Multiplicador de sequência ativo';
+  }
+  // meta chips
+  $('#qmeta').innerHTML=`<span class="chip">Nível <b>${dx.level}</b></span>`+
+    `<span class="chip">${dx.cat}</span>`;
+  $('#src-tag').textContent='traçado gerado';
+  // sinal + pontos
+  G.sig=synth(dx,seed);buildPts();fitView();redrawEcg();
+  // dica
+  $('#hintbox').hidden=true;$('#hintbtn').hidden=false;$('#hintbtn').textContent='Ver dica';G.hintStep=0;
+  // opções
+  const opts=shuffle([dx.n,...dx.dist.slice(0,3)]);
+  const wrap=$('#opts');wrap.innerHTML='';
+  const keys=['A','B','C','D'];
+  opts.forEach((label,i)=>{
+    const b=document.createElement('button');b.className='opt';b.type='button';
+    b.innerHTML=`<span class="k">${keys[i]}</span><span>${label}</span>`;
+    b.onclick=()=>answer(label,b);wrap.appendChild(b);
+  });
+  $('#fb-slot').innerHTML='';
+  if(G.mode==='infinite')startTimer();
+}
+
+/* dica progressiva */
+$('#hintbtn').onclick=()=>{const h=G.cur.dx.hints;const box=$('#hintbox');
+  G.hintStep=(G.hintStep||0)+1;
+  box.hidden=false;box.innerHTML='<ul>'+h.slice(0,G.hintStep).map(x=>`<li>${x}</li>`).join('')+'</ul>';
+  if(G.hintStep>=h.length)$('#hintbtn').hidden=true;
+};
+
+/* ===================== RESPONDER ===================== */
+function answer(label,btn){
+  if(G.answered)return;G.answered=true;stopTimer();
+  const dx=G.cur.dx, ok=label===dx.n;
+  $$('.opt').forEach(o=>{o.disabled=true;const txt=o.querySelector('span:last-child').textContent;
+    if(txt===dx.n)o.classList.add('correct');else if(o===btn)o.classList.add('wrong');else o.classList.add('dim');});
+  $('#hintbtn').hidden=true;
+  if(ok){
+    let big=false;
+    if(G.mode==='levels')G.correct++;
+    else{G.streak++;G.bestStreakRun=Math.max(G.bestStreakRun,G.streak);
+      const mult=multiplier();const tb=Math.max(0,Math.round((G.timeLeft||0)*4));
+      G.score+=100*mult+tb;updateScore();
+      if(G.streak>1&&[3,6,10].includes(G.streak)){popStreak(G.streak+'× seguidos!');big=true;}}
+    sfxCorrect();confetti(big?2:1);
+  }else{
+    G.missed[dx.n]=(G.missed[dx.n]||0)+1;
+    if(G.mode==='infinite'){G.lives--;G.streak=0;renderLives();updateScore();}
+    sfxWrong();
+  }
+  renderFeedback(ok,dx);
+}
+function multiplier(){const s=G.streak;return s>=10?5:s>=6?3:s>=3?2:1;}
+function updateScore(){$('#score').textContent=G.score;$('#mult').textContent=multiplier()+'×';}
+function renderLives(){const el=$('#lives');el.innerHTML='';for(let i=0;i<3;i++){
+  el.insertAdjacentHTML('beforeend',`<svg viewBox="0 0 24 24" fill="currentColor" class="${i<G.lives?'':'gone'}"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"/></svg>`);}}
+function popStreak(t){const p=$('#streakpop');p.textContent=t;p.classList.remove('go');void p.offsetWidth;p.classList.add('go');}
+
+const CK='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>';
+function renderFeedback(ok,dx){
+  const f=dx.feat, ex=EXTRA[dx.key]||{recog:[],care:'',annot:[]};
+  $('#fb-slot').innerHTML=`
+   <div class="fb">
+     <div class="fb-head ${ok?'ok':'no'}">
+       <span class="ic">${ok?'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>':'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</span>
+       <div><div class="verdict">${ok?'Correto!':'Quase! O certo era:'}</div><div class="dxname">${dx.n}</div></div>
+     </div>
+     <div class="fb-body">
+       <p>${dx.exp}</p>
+       <div class="feats">
+         <div class="feat"><div class="k">Frequência</div><div class="v">${f.fc}</div></div>
+         <div class="feat"><div class="k">Intervalo PR</div><div class="v">${f.pr}</div></div>
+         <div class="feat"><div class="k">QRS</div><div class="v">${f.qrs}</div></div>
+         <div class="feat"><div class="k">Ritmo</div><div class="v">${f.rit}</div></div>
+       </div>
+       <div class="teach">
+         <h4>O achado no traçado</h4>
+         <div class="teachpaper"><canvas id="ecgTeach"></canvas></div>
+         <h4>Como reconhecer</h4>
+         <ul class="recog">${ex.recog.map(r=>`<li>${CK}<span>${r}</span></li>`).join('')}</ul>
+         <div class="care"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span><b>Por que importa:</b> ${ex.care}</span></div>
+       </div>
+     </div>
+   </div>
+   <button class="next" id="nextbtn">${nextLabel()}</button>`;
+  $('#nextbtn').onclick=advance;
+  requestAnimationFrame(()=>{const c=document.getElementById('ecgTeach');if(c)paintStrip(c,G.sig,ex.annot);});
+  $('#fb-slot').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function nextLabel(){
+  if(G.mode==='levels')return G.idx>=9?'Ver resultado':'Próximo caso';
+  return G.lives<=0?'Ver resultado':'Próximo caso';
+}
+function advance(){
+  if(G.mode==='levels'){G.idx++;if(G.idx>=10)return finishLevels();loadCase();
+    $('#tb-sub').textContent=`Caso ${G.idx+1} de 10 · ${G.correct} acerto${G.correct===1?'':'s'}`;}
+  else{if(G.lives<=0)return finishInfinite();nextInfinite();}
+}
+
+/* ===================== TIMER (infinito) ===================== */
+function startTimer(){stopTimer();const dur=20;G.tStart=performance.now();G.timeLeft=dur;
+  const bar=$('#timer');bar.style.transform='scaleX(1)';bar.className='';
+  const tick=()=>{const el=(performance.now()-G.tStart)/1000;const left=Math.max(0,dur-el);G.timeLeft=left;
+    bar.style.transform='scaleX('+(left/dur)+')';
+    bar.className=left<5?'crit':left<10?'warn':'';
+    if(left<=0){stopTimer();timeout();return;}G.timerRAF=requestAnimationFrame(tick);};
+  G.timerRAF=requestAnimationFrame(tick);}
+function stopTimer(){if(G.timerRAF)cancelAnimationFrame(G.timerRAF);G.timerRAF=null;}
+function timeout(){if(G.answered)return;G.answered=true;const dx=G.cur.dx;
+  $$('.opt').forEach(o=>{o.disabled=true;const txt=o.querySelector('span:last-child').textContent;
+    if(txt===dx.n)o.classList.add('correct');else o.classList.add('dim');});
+  G.missed[dx.n]=(G.missed[dx.n]||0)+1;G.lives--;G.streak=0;renderLives();updateScore();
+  sfxWrong();renderFeedback(false,dx);}
+
+/* ===================== RESULTADOS ===================== */
+function finishLevels(){
+  stopTimer();const passed=G.correct>=PASS;const pct=Math.round(G.correct/10*100);
+  if(passed){save['done'+G.level]=true;if(G.level<3&&save.unlocked<=G.level)save.unlocked=G.level+1;persist();}
+  $('#result-body').innerHTML=`
+    <div class="big">${G.correct}/10</div>
+    <div class="lbl">${pct}% de acerto</div>
+    <span class="pass-badge ${passed?'ok':'no'}">${passed?'Nível concluído! '+(G.level<3?'Próximo nível desbloqueado':'Você zerou todos os níveis!'):'Precisa de 80% (8/10) para avançar'}</span>
+    ${reviewList()}${learnCards()}
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="r-home">Início</button>
+      <button class="btn btn-primary" id="r-again">${passed&&G.level<3?'Próximo nível':'Jogar de novo'}</button>
+    </div>`;
+  $('#r-home').onclick=()=>{show('s-home');renderHome();};
+  $('#r-again').onclick=()=>startLevels(passed&&G.level<3?G.level+1:G.level);
+  show('s-result');
+  if(passed){sfxWin();confetti(3);}else sfxLose();
+}
+function finishInfinite(){
+  stopTimer();
+  const record=G.score>0&&G.score>=save.bestScore;
+  if(G.score>save.bestScore)save.bestScore=G.score;
+  if(G.bestStreakRun>save.bestStreak)save.bestStreak=G.bestStreakRun;persist();
+  $('#result-body').innerHTML=`
+    <div class="big">${G.score}</div>
+    <div class="lbl">pontos${record?' · novo recorde!':''}</div>
+    <div class="rstats">
+      <div><div class="v mono">${G.bestStreakRun}</div><div class="k">Maior sequência</div></div>
+      <div><div class="v mono">${save.bestScore}</div><div class="k">Recorde geral</div></div>
+    </div>
+    ${reviewList()}${learnCards()}
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="r-home">Início</button>
+      <button class="btn btn-primary" id="r-again">Jogar de novo</button>
+    </div>`;
+  $('#r-home').onclick=()=>{show('s-home');renderHome();};
+  $('#r-again').onclick=startInfinite;
+  show('s-result');
+  if(record){sfxWin();confetti(3);}else sfxLose();
+}
+const NAME2DX={};DX.forEach(d=>NAME2DX[d.n]=d);
+function reviewList(){
+  const keys=Object.keys(G.missed);if(!keys.length)return '<div class="review"><h3>Revisão</h3><div class="rev-item"><span class="dot" style="background:var(--accent)"></span>Nenhum erro. Leitura impecável!</div></div>';
+  return '<div class="review"><h3>Diagnósticos para revisar</h3>'+
+    keys.sort((a,b)=>G.missed[b]-G.missed[a]).map(k=>`<div class="rev-item"><span class="dot"></span>${k}<span class="cnt">${G.missed[k]}×</span></div>`).join('')+'</div>';
+}
+function learnCards(){
+  const keys=Object.keys(G.missed);if(!keys.length)return '';
+  const cards=keys.sort((a,b)=>G.missed[b]-G.missed[a]).map(name=>{
+    const dx=NAME2DX[name];if(!dx)return '';const ex=EXTRA[dx.key]||{recog:[]};
+    return `<div class="lcard"><div class="lh">${name}<span class="tag">Nível ${dx.level}</span></div>
+      <ul>${ex.recog.map(r=>`<li>${CK}<span>${r}</span></li>`).join('')}</ul></div>`;
+  }).join('');
+  return `<div class="learn"><h3>Aprenda com os erros</h3>${cards}</div>`;
+}
+
+/* ===================== CANVAS ECG ===================== */
+const cv=$('#ecg'),ctx=cv.getContext('2d');
+let view={zoom:1,panX:0,panY:0,fitMm:2,widthMm:0};
+function buildPts(){const v=G.sig,n=v.length;const xs=new Float32Array(n),ys=new Float32Array(n);
+  for(let i=0;i<n;i++){xs[i]=(i/FS)*25;ys[i]=v[i]*10;}G.pts={xs,ys};view.widthMm=(n/FS)*25;}
+function cssSize(){const r=cv.parentElement.getBoundingClientRect();return{w:r.width,h:230};}
+function setupCanvas(){const{w,h}=cssSize();const dpr=Math.min(window.devicePixelRatio||1,2.5);
+  cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.height=h+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);return{w,h};}
+function fitView(){const{w}=cssSize();view.fitMm=(w-8)/view.widthMm;view.zoom=1;view.panX=4;view.panY=0;}
+function pxPerMm(){return view.fitMm*view.zoom;}
+function redrawEcg(){
+  if(!G.pts)return;const{w,h}=setupCanvas();const p=pxPerMm();
+  const cs=getComputedStyle(document.documentElement);
+  const paper=cs.getPropertyValue('--paper').trim()||'#fff8f6';
+  const gMin=cs.getPropertyValue('--grid-min').trim()||'#f4cdc6';
+  const gMaj=cs.getPropertyValue('--grid-maj').trim()||'#e29a90';
+  const trace=cs.getPropertyValue('--trace').trim()||'#181212';
+  ctx.fillStyle=paper;ctx.fillRect(0,0,w,h);
+  const midY=h/2 - view.panY;
+  // grade (mm)
+  const startMm=Math.floor(-view.panX/p), endMm=Math.ceil((w-view.panX)/p);
+  ctx.lineWidth=1;
+  for(let mm=startMm;mm<=endMm;mm++){const x=view.panX+mm*p;if(x<-2||x>w+2)continue;
+    ctx.strokeStyle=(mm%5===0)?gMaj:gMin;ctx.globalAlpha=(mm%5===0)?.9:.6;
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  const halfMm=Math.ceil((h/2)/p)+1;
+  for(let mm=-halfMm;mm<=halfMm;mm++){const y=midY+mm*p;if(y<-2||y>h+2)continue;
+    ctx.strokeStyle=(mm%5===0)?gMaj:gMin;ctx.globalAlpha=(mm%5===0)?.9:.6;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  ctx.globalAlpha=1;
+  // traçado
+  const xs=G.pts.xs,ys=G.pts.ys,n=xs.length;
+  ctx.strokeStyle=trace;ctx.lineWidth=1.7;ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.beginPath();let started=false;
+  for(let i=0;i<n;i++){const x=view.panX+xs[i]*p;if(x<-4)continue;if(x>w+4)break;
+    const y=midY-ys[i]*p;if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}
+  ctx.stroke();
+}
+window.addEventListener('resize',()=>{if(G.pts){const oldFit=view.fitMm;fitView.keep=view.zoom;fitView();redrawEcg();}});
+
+/* pan/zoom por ponteiro + pinça + roda */
+let ptrs=new Map(),pinchStart=null;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){const a=[...ptrs.values()];pinchStart={d:dist(a[0],a[1]),zoom:view.zoom,cx:(a[0].x+a[1].x)/2,px:view.panX};}});
+cv.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;const prev=ptrs.get(e.pointerId);
+  if(ptrs.size===2&&pinchStart){ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});const a=[...ptrs.values()];
+    const nd=dist(a[0],a[1]);const nz=clamp(pinchStart.zoom*(nd/pinchStart.d),0.5,7);
+    const r=cv.getBoundingClientRect();const cx=pinchStart.cx-r.left;
+    const mm=(cx-pinchStart.px)/(view.fitMm*pinchStart.zoom);
+    view.zoom=nz;view.panX=cx-mm*pxPerMm();redrawEcg();return;}
+  const dx=e.clientX-prev.x,dy=e.clientY-prev.y;view.panX+=dx;view.panY-=dy;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});redrawEcg();});
+function up(e){ptrs.delete(e.pointerId);if(ptrs.size<2)pinchStart=null;}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect();const cx=e.clientX-r.left;
+  const mm=(cx-view.panX)/pxPerMm();const nz=clamp(view.zoom*(e.deltaY<0?1.12:0.89),0.5,7);view.zoom=nz;
+  view.panX=cx-mm*pxPerMm();redrawEcg();},{passive:false});
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function zoomAt(f){const r=cv.getBoundingClientRect();const cx=r.width/2;const mm=(cx-view.panX)/pxPerMm();
+  view.zoom=clamp(view.zoom*f,0.5,7);view.panX=cx-mm*pxPerMm();redrawEcg();}
+$('#zoom-in').onclick=()=>zoomAt(1.3);
+$('#zoom-out').onclick=()=>zoomAt(0.77);
+$('#zoom-reset').onclick=()=>{fitView();redrawEcg();};
+
+/* ===================== BOOT ===================== */
+function start(){renderHome();show('s-home');}
+if(window.claude&&window.claude.hot&&window.claude.hot.ready)window.claude.hot.ready(start);else start();
+
+</script>
