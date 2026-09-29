@@ -115,13 +115,35 @@
   .paperwrap{position:relative;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--sh);
     background:var(--paper);border:1px solid var(--grid-maj);touch-action:none;animation:rise .4s ease both}
   @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  #ecg{display:block;width:100%;height:230px}
+  #ecg{display:block;width:100%;height:250px;touch-action:none}
   .paper-tools{position:absolute;top:8px;right:8px;display:flex;gap:6px}
   .ptool{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.86);color:#5a3833;
     display:grid;place-items:center;backdrop-filter:blur(4px);box-shadow:0 1px 4px rgba(0,0,0,.15)}
   .ptool:active{background:#fff}
   .paper-cap{position:absolute;left:10px;bottom:7px;font-family:var(--f-mono);font-size:10px;color:var(--paper-fg)}
-  .src-tag{position:absolute;right:10px;bottom:7px;font-family:var(--f-mono);font-size:9.5px;color:var(--paper-fg);opacity:.8;max-width:60%;text-align:right}
+  .src-tag{position:absolute;right:10px;bottom:7px;font-family:var(--f-mono);font-size:9.5px;color:var(--paper-fg);opacity:.8;max-width:44%;text-align:right}
+  .scrollhint{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);font-family:var(--f-mono);
+    font-size:10px;color:var(--paper-fg);background:rgba(255,255,255,.85);border-radius:999px;padding:3px 11px;
+    pointer-events:none;transition:opacity .35s ease;box-shadow:0 1px 4px rgba(0,0,0,.14);white-space:nowrap}
+  .scrollhint.hide{opacity:0}
+
+  /* ---------- CARTÃO DO PACIENTE ---------- */
+  .patient{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-md);padding:13px 14px;margin-bottom:11px;box-shadow:var(--sh);animation:rise .35s ease both}
+  .patient.crit{border-color:var(--danger)}
+  .pt-av{width:42px;height:42px;border-radius:13px;flex:none;display:grid;place-items:center;
+    background:var(--accent-soft);color:var(--accent-2)}
+  .patient.crit .pt-av{background:var(--danger-soft);color:var(--danger)}
+  .pt-main{flex:1;min-width:0}
+  .pt-who{font-family:var(--f-disp);font-weight:700;font-size:15.5px;line-height:1.2}
+  .pt-who .hx{font-family:var(--f-body);font-weight:500;color:var(--muted);font-size:12.5px;letter-spacing:0}
+  .pt-sx{color:var(--fg);font-size:13.4px;margin-top:4px;line-height:1.4}
+  .pt-vitals{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .vital{font-family:var(--f-mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:8px;padding:3px 9px;color:var(--muted)}
+  .vital b{color:var(--fg);font-weight:600}
+  .vital.alarm{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+  .vital.alarm b{color:var(--danger)}
 
   /* ---------- ANSWERS ---------- */
   .qlabel{padding:14px 16px 6px;font-size:14px;color:var(--muted)}
@@ -295,9 +317,10 @@
     <div class="timer" id="timerwrap" hidden><i id="timer"></i></div>
 
     <div class="stage">
-      <div class="qmeta" id="qmeta"></div>
+      <div id="patient"></div>
       <div class="paperwrap">
         <canvas id="ecg"></canvas>
+        <div class="scrollhint hide" id="scrollhint">← arraste para ver o restante →</div>
         <div class="paper-tools">
           <button class="ptool" id="zoom-in" aria-label="Aproximar"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M20 20l-3.5-3.5"/></svg></button>
           <button class="ptool" id="zoom-out" aria-label="Afastar"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-3.5-3.5"/></svg></button>
@@ -308,7 +331,7 @@
       </div>
     </div>
 
-    <div class="qlabel">Qual é o <b>diagnóstico</b> deste traçado?</div>
+    <div class="qlabel">Com base no <b>quadro clínico</b> e no <b>traçado</b>, o que o paciente tem?</div>
     <button class="hintbtn" id="hintbtn">Ver dica</button>
     <div class="hintbox" id="hintbox" hidden></div>
     <div class="opts" id="opts"></div>
@@ -678,11 +701,61 @@ function startInfinite(){G.mode='infinite';G.lives=3;G.score=0;G.streak=0;G.best
 
 function nextInfinite(){const dx=pickInfinite();G.cur={dx,seed:(Math.random()*1e9)|0};renderCase();}
 
+/* ===================== CENÁRIO CLÍNICO DO PACIENTE ===================== */
+/* vitais e história coerentes com cada diagnóstico — gerados por seed (reprodutível, variado) */
+const CLIN={
+ rsn:{sex:'any',age:[19,55],hx:['hígido, sem comorbidades','tabagista social','em uso de anticoncepcional'],sx:['exame admissional do trabalho','check-up preventivo de rotina','avaliação pré-operatória eletiva'],fc:[60,94],pa:[[112,132],[70,84]],sat:[97,99]},
+ taqui:{sex:'any',age:[18,52],hx:['quadro febril há 2 dias','desidratação por diarreia','transtorno de ansiedade'],sx:['febre e mal-estar geral','palpitações após esforço físico','sudorese e sensação de inquietação'],fc:[104,142],pa:[[104,126],[62,80]],sat:[95,99]},
+ bradi:{sex:'any',age:[20,72],hx:['atleta de endurance','em uso de betabloqueador','hipotireoidismo'],sx:['bradicardia notada na consulta','leve tontura ao levantar','sem sintomas, achado casual'],fc:[40,56],pa:[[108,128],[64,80]],sat:[97,99]},
+ fa:{sex:'any',age:[58,86],hx:['hipertensa de longa data','com insuficiência cardíaca','com hipertireoidismo'],sx:['palpitações e cansaço há 1 dia','falta de ar aos esforços','sensação de batimento irregular'],fc:[92,148],pa:[[118,150],[72,92]],sat:[93,98]},
+ tv:{sex:'any',age:[50,78],hx:['com infarto prévio','com miocardiopatia dilatada','em uso irregular das medicações'],sx:['palpitação intensa e mal-estar súbito','dor no peito e quase desmaio','sudorese com sensação de morte iminente'],fc:[150,200],pa:[[76,98],[48,64]],sat:[90,96]},
+ flutter:{sex:'any',age:[55,82],hx:['portador de DPOC','hipertenso','no pós-operatório de cirurgia cardíaca'],sx:['palpitações regulares e rápidas','cansaço e dispneia leve','desconforto torácico'],fc:[145,155],pa:[[110,140],[70,88]],sat:[93,98]},
+ bav1:{sex:'any',age:[45,80],hx:['em uso de betabloqueador','hipertenso','sem sintomas relatados'],sx:['achado em ECG de rotina','avaliação pré-operatória','sem queixas cardiovasculares'],fc:[58,88],pa:[[116,142],[70,86]],sat:[96,99]},
+ mobitz1:{sex:'any',age:[40,78],hx:['em uso de bloqueador do nó AV','com doença isquêmica leve','com tônus vagal aumentado'],sx:['tontura ocasional','sensação de falha do coração','assintomático, achado no monitor'],fc:[52,70],pa:[[110,134],[68,84]],sat:[96,99]},
+ mobitz2:{sex:'any',age:[55,84],hx:['com doença do sistema de condução','com infarto anterior prévio','sem melhora com atropina'],sx:['pré-síncope recorrente','tontura e escurecimento visual','episódios de quase desmaio'],fc:[42,64],pa:[[104,130],[64,82]],sat:[95,98]},
+ bavt:{sex:'any',age:[62,88],hx:['com doença degenerativa da condução','com infarto inferior agudo','em uso de vários cronotrópicos negativos'],sx:['síncope com queda','tontura intensa e fadiga','confusão e mal-estar'],fc:[30,44],pa:[[88,112],[54,70]],sat:[92,97]},
+ brd:{sex:'any',age:[30,80],hx:['assintomático','com embolia pulmonar prévia','com sobrecarga de câmaras direitas'],sx:['achado incidental em ECG','avaliação de sopro','check-up de rotina'],fc:[60,90],pa:[[112,138],[70,86]],sat:[96,99]},
+ bre:{sex:'any',age:[55,85],hx:['hipertenso de longa data','com miocardiopatia','com doença arterial coronariana'],sx:['dispneia progressiva aos esforços','cansaço e edema de membros','dor torácica atípica'],fc:[62,92],pa:[[118,148],[72,90]],sat:[93,98]},
+ iamst:{sex:'any',age:[48,80],hx:['hipertenso, diabético e tabagista','com dislipidemia','com angina de esforço prévia'],sx:['dor torácica opressiva há 40 min','dor no peito irradiando para o braço','dor precordial com sudorese fria'],fc:[62,100],pa:[[100,150],[62,92]],sat:[92,98]},
+ peric:{sex:'any',age:[20,50],hx:['com infecção viral recente','com doença autoimune','em quadro pós-viral'],sx:['dor torácica que piora ao deitar','dor que melhora inclinando para frente','dor ventilatório-dependente há 2 dias'],fc:[82,110],pa:[[108,130],[66,82]],sat:[96,99]},
+ rpb:{sex:'M',age:[18,35],hx:['atleta jovem, hígido','sem fatores de risco','com história familiar negativa'],sx:['ECG de avaliação esportiva','check-up pré-competição','assintomático'],fc:[52,74],pa:[[110,128],[66,80]],sat:[98,99]},
+ wpw:{sex:'any',age:[16,40],hx:['com episódios prévios de taquicardia','sem cardiopatia estrutural','com palpitações desde a adolescência'],sx:['crises de palpitação de início e fim súbitos','taquicardia paroxística autolimitada','achado em ECG após palpitação'],fc:[60,100],pa:[[110,130],[68,82]],sat:[97,99]},
+ fv:{sex:'any',age:[45,80],hx:['com doença coronariana','com infarto em curso','em parada presenciada'],sx:['encontrado inconsciente e sem pulso','colapso súbito, não responsivo','parada cardiorrespiratória em curso'],fc:[0,0],pa:[[0,0],[0,0]],sat:[0,0]},
+ torsades:{sex:'any',age:[35,75],hx:['em uso de medicação que prolonga o QT','com hipocalemia e hipomagnesemia','com QT longo congênito'],sx:['síncope recorrente','palpitação seguida de desmaio','tontura e quase parada'],fc:[200,250],pa:[[80,100],[50,66]],sat:[90,96]},
+ hiperk:{sex:'any',age:[40,82],hx:['renal crônico em diálise','em uso de poupadores de potássio','com lesão renal aguda'],sx:['fraqueza muscular e mal-estar','faltou à diálise esta semana','parestesias e fadiga intensa'],fc:[54,92],pa:[[120,160],[74,94]],sat:[95,99]},
+};
+function pick(rng,a){return a[(rng()*a.length)|0];}
+function rint(rng,a,b){return a+Math.floor(rng()*(b-a+1));}
+function buildScenario(dx,seed){
+  const rng=mulberry32((seed^0x9e3779b9)>>>0), c=CLIN[dx.key]||CLIN.rsn;
+  const sex=c.sex==='any'?(rng()<0.5?'F':'M'):c.sex;
+  return {sex,age:rint(rng,c.age[0],c.age[1]),hx:pick(rng,c.hx),sx:pick(rng,c.sx),
+    fc:rint(rng,c.fc[0],c.fc[1]),pa:rint(rng,c.pa[0][0],c.pa[0][1])+'/'+rint(rng,c.pa[1][0],c.pa[1][1]),sat:rint(rng,c.sat[0],c.sat[1])};
+}
+const PERSON_SVG='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+function renderPatient(dx,seed){
+  const sc=buildScenario(dx,seed), el=$('#patient');
+  const crit=['fv','tv','torsades','bavt','iamst'].includes(dx.key);
+  const who=(sc.sex==='F'?'Mulher':'Homem')+', '+sc.age+' anos';
+  let vitals;
+  if(dx.key==='fv'){
+    vitals='<span class="vital alarm">PA <b>0/0</b></span><span class="vital alarm"><b>SEM PULSO</b></span><span class="vital alarm">SatO₂ <b>—</b></span>';
+  }else{
+    const fcAl=(sc.fc>=150||sc.fc<=45)?' alarm':'', paAl=(+sc.pa.split('/')[0]<95)?' alarm':'', satAl=(sc.sat<93)?' alarm':'';
+    vitals=`<span class="vital${paAl}">PA <b>${sc.pa}</b></span><span class="vital${fcAl}">FC <b>${sc.fc}</b></span><span class="vital${satAl}">SatO₂ <b>${sc.sat}%</b></span>`;
+  }
+  el.className='patient'+(crit?' crit':'');
+  el.innerHTML=`<div class="pt-av">${PERSON_SVG}</div><div class="pt-main">`+
+    `<div class="pt-who">${who} <span class="hx">· ${sc.hx}</span></div>`+
+    `<div class="pt-sx">“${sc.sx}”</div><div class="pt-vitals">${vitals}</div></div>`;
+}
+
 /* ===================== CARREGAR CASO ===================== */
 function loadCase(){G.cur=G.queue[G.idx];renderCase();}
 
 function renderCase(){
   G.answered=false;
+  $('#s-play').scrollTop=0;                       // sempre começa no topo do caso
   const {dx,seed}=G.cur;
   // topbar
   if(G.mode==='levels'){
@@ -693,12 +766,14 @@ function renderCase(){
     $('#tb-title').textContent='Modo Infinito';
     $('#tb-sub').textContent='Multiplicador de sequência ativo';
   }
-  // meta chips
-  $('#qmeta').innerHTML=`<span class="chip">Nível <b>${dx.level}</b></span>`+
-    `<span class="chip">${dx.cat}</span>`;
+  // cartão clínico do paciente
+  renderPatient(dx,seed);
   $('#src-tag').textContent='traçado gerado';
   // sinal + pontos
   G.sig=synth(dx,seed);buildPts();fitView();redrawEcg();
+  // dica de arraste só quando o traçado é mais largo que a tela
+  const shw=cssSize().w, sh=$('#scrollhint');
+  if(sh)sh.classList.toggle('hide',!(view.widthMm*pxPerMm()>shw+8));
   // dica
   $('#hintbox').hidden=true;$('#hintbtn').hidden=false;$('#hintbtn').textContent='Ver dica';G.hintStep=0;
   // opções
@@ -866,14 +941,20 @@ const cv=$('#ecg'),ctx=cv.getContext('2d');
 let view={zoom:1,panX:0,panY:0,fitMm:2,widthMm:0};
 function buildPts(){const v=G.sig,n=v.length;const xs=new Float32Array(n),ys=new Float32Array(n);
   for(let i=0;i<n;i++){xs[i]=(i/FS)*25;ys[i]=v[i]*10;}G.pts={xs,ys};view.widthMm=(n/FS)*25;}
-function cssSize(){const r=cv.parentElement.getBoundingClientRect();return{w:r.width,h:230};}
+function cssSize(){const r=cv.parentElement.getBoundingClientRect();
+  const h=Math.round(clamp(window.innerHeight*0.33,220,320));return{w:r.width,h};}
 function setupCanvas(){const{w,h}=cssSize();const dpr=Math.min(window.devicePixelRatio||1,2.5);
   cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.height=h+'px';
   ctx.setTransform(dpr,0,0,dpr,0,0);return{w,h};}
-function fitView(){const{w}=cssSize();view.fitMm=(w-8)/view.widthMm;view.zoom=1;view.panX=4;view.panY=0;}
+/* escala legível por padrão: ~3,4 mm/px mostra ~4 batimentos nítidos sem precisar de zoom */
+function fitView(){const{w}=cssSize();view.fitMm=clamp(w/100,3.0,4.6);view.zoom=1;view.panX=6;view.panY=0;clampPan();}
 function pxPerMm(){return view.fitMm*view.zoom;}
+function clampPan(){const{w}=cssSize();const total=view.widthMm*pxPerMm();
+  if(total<=w-12)view.panX=(w-total)/2;                 // cabe inteiro → centraliza
+  else view.panX=clamp(view.panX,w-total-6,6);          // mais largo → limita o arraste
+  view.panY=clamp(view.panY,-140,140);}
 function redrawEcg(){
-  if(!G.pts)return;const{w,h}=setupCanvas();const p=pxPerMm();
+  if(!G.pts)return;clampPan();const{w,h}=setupCanvas();const p=pxPerMm();
   const cs=getComputedStyle(document.documentElement);
   const paper=cs.getPropertyValue('--paper').trim()||'#fff8f6';
   const gMin=cs.getPropertyValue('--grid-min').trim()||'#f4cdc6';
@@ -905,6 +986,7 @@ window.addEventListener('resize',()=>{if(G.pts){const oldFit=view.fitMm;fitView.
 /* pan/zoom por ponteiro + pinça + roda */
 let ptrs=new Map(),pinchStart=null;
 cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  {const sh=$('#scrollhint');if(sh)sh.classList.add('hide');}
   if(ptrs.size===2){const a=[...ptrs.values()];pinchStart={d:dist(a[0],a[1]),zoom:view.zoom,cx:(a[0].x+a[1].x)/2,px:view.panX};}});
 cv.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;const prev=ptrs.get(e.pointerId);
   if(ptrs.size===2&&pinchStart){ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});const a=[...ptrs.values()];
